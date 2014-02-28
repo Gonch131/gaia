@@ -115,6 +115,7 @@ var NfcManager = {
   NFC_HW_STATE_DISABLE_DISCOVERY: 3,
 
   hwState: 0,
+  nfcWakeLock: null,
 
   _debug: function nm_debug(msg, optObject) {
     if (this.DEBUG) {
@@ -148,6 +149,9 @@ var NfcManager = {
                        self.NFC_HW_STATE_ON) :
                     self.NFC_HW_STATE_OFF;
       self.dispatchHardwareChangeEvt(state);
+      if (!enabled) {
+        this.removeWakeLock();
+      }
     });
   },
 
@@ -173,10 +177,27 @@ var NfcManager = {
     window.dispatchEvent(event);
   },
 
+  getWakeLock: function nm_getWakeLock() {
+    this._debug('Requesting a wake lock on "screen" for NFC.');
+    this.nfcWakeLock = navigator.requestWakeLock('screen');
+  },
+
+  removeWakeLock: function nm_removeWakeLock() {
+    if (this.nfcWakeLock) {
+      try {
+        this.nfcWakeLock.unlock();
+      } catch (e) {
+        // this can happen if the lock is already unlocked
+        console.error('error during unlock', e);
+      }
+      this.nfcWakeLock = null;
+    }
+  },
+
   handleEvent: function nm_handleEvent(evt) {
     var state;
     switch (evt.type) {
-      case 'lock': // Fall thorough
+      case 'lock': // Fall through
       case 'unlock':
       case 'screenchange':
         if (this.hwState == this.NFC_HW_STATE_OFF) {
@@ -362,8 +383,8 @@ var NfcManager = {
   handleTechnologyDiscovered: function nm_handleTechnologyDiscovered(command) {
     this._debug('Technology Discovered: ' + JSON.stringify(command));
 
-    // UX: TODO
     window.navigator.vibrate([25, 50, 125]);
+    this.getWakeLock();
 
     // Check for tech types:
     this._debug('command.techList: ' + command.techList);
@@ -440,14 +461,13 @@ var NfcManager = {
 
   handleTechLost: function nm_handleTechLost(command) {
     this._debug('Technology Lost: ' + JSON.stringify(command));
-    // TODO: Do something with the UI/UX to indicate the tag is gone.
-    // TODO: Dismiss activity chooser?
 
     // Clean up P2P UI events
     window.removeEventListener('shrinking-sent', this);
     window.dispatchEvent(new CustomEvent('shrinking-stop'));
 
     window.navigator.vibrate([125, 50, 25]);
+    this.removeWakeLock();
   },
 
   // Miscellaneous utility functions to handle formating the JSON for activities
