@@ -3,6 +3,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 import json
+import re
 import os
 import time
 
@@ -600,6 +601,11 @@ class Accessibility(object):
             'return Accessibility.isHidden.apply(Accessibility, arguments)',
             [element], special_powers=True)
 
+    def is_disabled(self, element):
+        return self.marionette.execute_async_script(
+            'return Accessibility.isDisabled.apply(Accessibility, arguments)',
+            [element], special_powers=True)
+
     def click(self, element):
         self.marionette.execute_async_script(
             'Accessibility.click.apply(Accessibility, arguments)',
@@ -710,20 +716,42 @@ class GaiaDevice(object):
         self.marionette.wait_for_port()
         self.marionette.start_session()
 
-        # Wait for the AppWindowManager to have registered the frame as active (loaded)
-        locator = (By.CSS_SELECTOR, 'div.appWindow.active')
-        Wait(marionette=self.marionette, timeout=timeout, ignored_exceptions=NoSuchElementException)\
-            .until(lambda m: m.find_element(*locator).is_displayed())
+        # v1.3 requires a different wait
+        gaia_version = re.search('(\d+.\d+).*',
+                                 GaiaData(self.marionette, self.testvars).get_setting('deviceinfo.os')).group(1)
+        if float(gaia_version) <= 1.3:
+            if self.is_android_build:
+                self.marionette.execute_async_script("""
+window.addEventListener('mozbrowserloadend', function loaded(aEvent) {
+  if (aEvent.target.src.indexOf('ftu') != -1 || aEvent.target.src.indexOf('homescreen') != -1) {
+    window.removeEventListener('mozbrowserloadend', loaded);
+    marionetteScriptFinished();
+  }
+});""", script_timeout=timeout*1000)
+                # TODO: Remove this sleep when Bug 924912 is addressed
+                time.sleep(5)
+        else:
+            # Wait for the AppWindowManager to have registered the frame as active (loaded)
+            locator = (By.CSS_SELECTOR, 'div.appWindow.active')
+            Wait(marionette=self.marionette, timeout=timeout, ignored_exceptions=NoSuchElementException)\
+                .until(lambda m: m.find_element(*locator).is_displayed())
 
         self.marionette.import_script(self.lockscreen_atom)
         self.update_checker.check_updates()
 
-    def stop_b2g(self):
+    @property
+    def is_b2g_running(self):
+        return 'b2g' in self.manager.shellCheckOutput(['toolbox', 'ps'])
+
+    def stop_b2g(self, timeout=5):
         if self.marionette.instance:
             # close the gecko instance attached to marionette
             self.marionette.instance.close()
         elif self.is_android_build:
             self.manager.shellCheckOutput(['stop', 'b2g'])
+            Wait(self.marionette, timeout=timeout).until(
+                lambda m: not self.is_b2g_running,
+                message='b2g failed to stop.')
         else:
             raise Exception('Unable to stop B2G')
         self.marionette.client.close()
@@ -804,6 +832,7 @@ class GaiaDevice(object):
         self.marionette.switch_to_frame()
         result = self.marionette.execute_async_script('GaiaLockScreen.lock()')
         assert result, 'Unable to lock screen'
+        Wait(self.marionette).until(lambda m: m.find_element(By.CSS_SELECTOR, 'div.lockScreenWindow.active'))
 
     def unlock(self):
         self.marionette.switch_to_frame()

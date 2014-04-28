@@ -878,7 +878,8 @@ function setLayoutPage(newpage) {
 // Inform about a change in the displayed application via mutation observer
 // http://hacks.mozilla.org/2012/05/dom-mutationobserver-reacting-to-dom-changes-without-killing-browser-performance/
 function updateTargetWindowHeight(hide) {
-  var imeHeight = cachedIMEDimensions.height = IMERender.ime.scrollHeight;
+  // height of the current active IME + 1px for the borderTop
+  var imeHeight = cachedIMEDimensions.height = IMERender.getHeight() + 1;
   var imeWidth = cachedIMEDimensions.width = IMERender.getWidth();
   window.resizeTo(imeWidth, imeHeight);
 }
@@ -1377,7 +1378,7 @@ function endPress(target, coords, touchId, hasCandidateScrolled) {
   var dataset = target.dataset;
   if (dataset.selection) {
     if (!hasCandidateScrolled) {
-      IMERender.toggleCandidatePanel(false);
+      IMERender.toggleCandidatePanel(false, true);
 
       if (inputMethod.select) {
         // We use dataset.data instead of target.textContent because the
@@ -1462,7 +1463,7 @@ function endPress(target, coords, touchId, hasCandidateScrolled) {
           candidatePanel.addEventListener('scroll', candidatePanelOnScroll);
         }
 
-        IMERender.toggleCandidatePanel(true);
+        IMERender.toggleCandidatePanel(true, true);
       };
 
       if (candidatePanel.dataset.rowCount == 1) {
@@ -1501,7 +1502,7 @@ function endPress(target, coords, touchId, hasCandidateScrolled) {
         }
       }
 
-      IMERender.toggleCandidatePanel(false);
+      IMERender.toggleCandidatePanel(false, true);
     }
     break;
 

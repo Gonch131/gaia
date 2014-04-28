@@ -19,32 +19,32 @@ var lastTouchA = null;
 var lastTouchB = null;
 var isScaling = false;
 var isZoomEnabled = false;
-var sensitivity = constants.ZOOM_GESTURE_SENSITIVITY;
+var sensitivity;
 var scaleSizeTo = {
   fill: CameraUtils.scaleSizeToFillViewport,
   fit: CameraUtils.scaleSizeToFitViewport
 };
 
 var getNewTouchA = function(touches) {
-  if (!lastTouchA) return null;
+  if (!lastTouchA) { return null; }
   for (var i = 0, length = touches.length, touch; i < length; i++) {
     touch = touches[i];
-    if (touch.identifier === lastTouchA.identifier) return touch;
+    if (touch.identifier === lastTouchA.identifier) { return touch; }
   }
   return null;
 };
 
 var getNewTouchB = function(touches) {
-  if (!lastTouchB) return null;
+  if (!lastTouchB) { return null; }
   for (var i = 0, length = touches.length, touch; i < length; i++) {
     touch = touches[i];
-    if (touch.identifier === lastTouchB.identifier) return touch;
+    if (touch.identifier === lastTouchB.identifier) { return touch; }
   }
   return null;
 };
 
 var getDeltaZoom = function(touchA, touchB) {
-  if (!touchA || !lastTouchA || !touchB || !lastTouchB) return 0;
+  if (!touchA || !lastTouchA || !touchB || !lastTouchB) { return 0; }
 
   var oldDistance = Math.sqrt(
                       Math.pow(lastTouchB.pageX - lastTouchA.pageX, 2) +
@@ -72,6 +72,8 @@ module.exports = View.extend({
     bind(this.el, 'touchmove', this.onTouchMove);
     bind(this.el, 'touchend', this.onTouchEnd);
     bind(this.el, 'animationend', this.onShutterEnd);
+
+    this.getSize();
   },
 
   render: function() {
@@ -81,6 +83,22 @@ module.exports = View.extend({
     this.els.frame = this.find('.js-frame');
     this.els.video = this.find('.js-video');
     this.els.videoContainer = this.find('.js-video-container');
+
+    sensitivity = constants.ZOOM_GESTURE_SENSITIVITY * window.innerWidth;
+  },
+
+  /**
+   * Stores the container size.
+   *
+   * We're using window dimensions
+   * here to avoid causing costly
+   * reflows.
+   *
+   * @public
+   */
+  getSize: function() {
+    this.width = window.innerWidth;
+    this.height = window.innerHeight;
   },
 
   onClick: function(e) {
@@ -232,25 +250,23 @@ module.exports = View.extend({
    * @param  {Boolean} mirrored
    */
   updatePreview: function(preview, sensorAngle, mirrored) {
-    var elementWidth = this.el.clientWidth;
-    var elementHeight = this.el.clientHeight;
     var aspect;
 
     // Invert dimensions if the camera's `sensorAngle` is
     // 0 or 180 degrees.
     if (sensorAngle % 180 === 0) {
       this.container = {
-        width: elementWidth,
-        height: elementHeight,
-        aspect: elementWidth / elementHeight
+        width: this.width,
+        height: this.height,
+        aspect: this.width / this.height
       };
 
       aspect = preview.height / preview.width;
     } else {
       this.container = {
-        width: elementHeight,
-        height: elementWidth,
-        aspect: elementHeight / elementWidth
+        width: this.height,
+        height: this.width,
+        aspect: this.height / this.width
       };
 
       aspect = preview.width / preview.height;

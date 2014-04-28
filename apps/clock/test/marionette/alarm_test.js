@@ -21,6 +21,14 @@ marionette('Alarm', function() {
     assert.ok($('#clock-day-date').displayed());
   });
 
+  test('Deleting an alarm works between app launches', function() {
+    alarm.create();
+    alarm.openEditForm(0);
+    alarm.delete();
+    actions.restart();
+    assert.equal(alarm.list.length, 0);
+  });
+
   // PythonTests: functional/test_clock_set_alarm
   test('Blank "New Alarm" form mutates properly', function() {
     alarm.openNewForm();
@@ -63,6 +71,22 @@ marionette('Alarm', function() {
     assert.equal($('#sound-menu').text(), selectedOptions.sound);
     assert.equal($('#snooze-menu').text(), selectedOptions.snooze);
     assert.equal($('#repeat-menu').text(), selectedOptions.repeat);
+  });
+
+  test('Volume control saves immediately when changed', function() {
+    // Even if we abort the alarm_edit form without saving, the volume
+    // should be saved.
+    alarm.openNewForm();
+    alarm.volumeInput.val(1);
+    alarm.cancelForm();
+
+    alarm.openNewForm();
+    assert.equal(parseInt(alarm.volumeInput.val(), 10), 1);
+
+    alarm.volumeInput.val(0);
+    alarm.cancelForm();
+    alarm.openNewForm();
+    assert.equal(parseInt(alarm.volumeInput.val(), 10), 0);
   });
 
   // PythonTests: functional/test_clock_add_alarm_multiple_times
@@ -128,7 +152,10 @@ marionette('Alarm', function() {
 
     alarm.saveForm();
 
-    assert.equal(alarm.list[0].name, changedName);
+    $.client.waitFor(function() {
+      return alarm.list[0].name === changedName;
+    }.bind(this));
+
     utils.assertStringContainsTime(alarm.list[0].timeString, changedTime);
 
     // Assert that the banner has been displayed.

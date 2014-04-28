@@ -208,6 +208,16 @@ suite('system/ScreenManager', function() {
       assert.isTrue(stubTurnOn.called);
     });
 
+    test('Testing nfc-tech-discovered and nfc-tech-lost event', function() {
+      var stubReconfigScreenTimeout = this.sinon.stub(
+                                         ScreenManager,
+                                         '_reconfigScreenTimeout');
+      ScreenManager.handleEvent({'type': 'nfc-tech-discovered'});
+      assert.isTrue(stubReconfigScreenTimeout.called);
+      ScreenManager.handleEvent({'type': 'nfc-tech-lost'});
+      assert.isTrue(stubReconfigScreenTimeout.called);
+    });
+
     suite('Testing userproximity event', function() {
       var stubTelephony, stubBluetooth, stubStatusBar, stubTurnOn, stubTurnOff;
 
@@ -716,6 +726,35 @@ suite('system/ScreenManager', function() {
       ScreenManager.toggleScreen();
       assert.isTrue(stubTurnOn.called);
       assert.isFalse(stubTurnOff.called);
+    });
+  });
+
+  suite('unlocking-start/stop events', function() {
+    test('handle unlocking-start event', function() {
+      // The public interface is event, so we manually fire and forward it to
+      // the handler, to avoid the asynchronous part which is unnecessary in
+      // the test.
+      var stubDispatchEvent = this.sinon.stub(window, 'dispatchEvent',
+        function(e) {
+          ScreenManager.handleEvent(e);
+        });
+      window.dispatchEvent(new CustomEvent('unlocking-start'));
+      assert.isTrue(ScreenManager._unlocking);
+      stubDispatchEvent.restore();
+    });
+
+    test('handle unlocking-stop event', function() {
+      var stubDispatchEvent = this.sinon.stub(window, 'dispatchEvent',
+        function(e) {
+          ScreenManager.handleEvent(e);
+        });
+      var stubReconfigScreenTimeout = this.sinon.stub(ScreenManager,
+        '_reconfigScreenTimeout');
+      window.dispatchEvent(new CustomEvent('unlocking-stop'));
+      assert.isFalse(ScreenManager._unlocking);
+      assert.isTrue(stubReconfigScreenTimeout.called);
+      stubDispatchEvent.restore();
+      stubReconfigScreenTimeout.restore();
     });
   });
 });

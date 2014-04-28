@@ -45,6 +45,7 @@
   };
 
   AppModalDialog.prototype.handleEvent = function amd_handleEvent(evt) {
+    this.app.debug('handling ' + evt.type);
     evt.preventDefault();
     this.events.push(evt);
     if (!this._injected) {
@@ -451,9 +452,9 @@
       // useful. Instead we will return the application name if there is one
       // or an empty string.
       //
+      var appURL = new URL(this.app.config.url);
       if (!title ||
-          title.contains(this.app.config.url) ||
-          title.contains(this.app.config.origin)) {
+          title.contains(appURL.origin)) {
         return this.app.name || '';
       }
 

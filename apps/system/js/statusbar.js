@@ -147,11 +147,13 @@ var StatusBar = {
   },
 
   show: function sb_show() {
+    this.background.classList.remove('hidden');
     this.element.classList.remove('invisible');
   },
 
   hide: function sb_hide() {
     this._releaseBar();
+    this.background.classList.add('hidden');
     this.element.classList.add('invisible');
   },
 
@@ -205,8 +207,6 @@ var StatusBar = {
 
     window.addEventListener('utilitytrayshow', this);
     window.addEventListener('utilitytrayhide', this);
-    window.addEventListener('rocketbarshown', this);
-    window.addEventListener('rocketbarhidden', this);
 
     // Listen to 'screenchange' from screen_manager.js
     window.addEventListener('screenchange', this);
@@ -298,12 +298,10 @@ var StatusBar = {
         break;
 
       case 'utilitytrayshow':
-      case 'rocketbarshown':
         this.show();
         break;
 
       case 'utilitytrayhide':
-      case 'rocketbarhidden':
         var app = AppWindowManager.getActiveApp();
         if (app && app.isFullScreen()) {
           this.hide();
@@ -1119,9 +1117,10 @@ var StatusBar = {
     }
 
     this.element = document.getElementById('statusbar');
+    this.background = document.getElementById('statusbar-background');
+    this.statusbarIcons = document.getElementById('statusbar-icons');
     this.screen = document.getElementById('screen');
     this.attentionBar = document.getElementById('attention-bar');
-
     this.topPanel = document.getElementById('top-panel');
   },
 

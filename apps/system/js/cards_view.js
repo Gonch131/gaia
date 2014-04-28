@@ -1,15 +1,15 @@
-/* -*- Mode: Java; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- /
-/* vim: set shiftwidth=2 tabstop=2 autoindent cindent expandtab: */
-
-//
-// CardsView is responsible for managing opened apps
-//
+/* global AppWindowManager, SleepMenu, SettingsListener, AttentionScreen,
+          TrustedUIManager, OrientationManager,
+          GestureDetector, UtilityTray, StackManager, Event */
 
 'use strict';
 
 var CardsView = (function() {
   //display icon of an app on top of app's card
-  var DISPLAY_APP_ICON = false;
+  var SCREENSHOT_PREVIEWS_SETTING_KEY = 'app.cards_view.screenshots.enabled';
+  // use screenshots in cards view? tracks setting value
+  var useAppScreenshotPreviews = true;
+
   // if 'true' user can close the app
   // by dragging it upwards
   var MANUAL_CLOSING = true;
@@ -25,7 +25,6 @@ var CardsView = (function() {
   // Are we removing the card now?
   var draggingCardUp = false;
   // Are we moving card left or right?
-  var sortingDirection;
   var HVGA = document.documentElement.clientWidth < 480;
   var cardsViewShown = false;
 
@@ -37,28 +36,58 @@ var CardsView = (function() {
   var gd = new GestureDetector(cardsView);
   gd.startDetecting();
 
+  // get initial setting value for screenshot previews
+  // and watch for changes
+  var settingRequest = SettingsListener.getSettingsLock()
+                       .get(SCREENSHOT_PREVIEWS_SETTING_KEY);
+
+  settingRequest.onsuccess = function() {
+    var settingValue = settingRequest.result[SCREENSHOT_PREVIEWS_SETTING_KEY];
+    useAppScreenshotPreviews = settingValue;
+  };
+
+  SettingsListener.observe(SCREENSHOT_PREVIEWS_SETTING_KEY,
+                           useAppScreenshotPreviews, function(settingValue) {
+    useAppScreenshotPreviews = settingValue;
+  });
+
+
   /*
    * Returns an icon URI
    *
    * @param{String} the position of the app in our cache
    */
   function getIconURI(position) {
-    var icons = stack[position].manifest.icons;
-    if (!icons) {
+    var app = stack[position];
+    if (!app) {
+      return null;
+    }
+    var icons = app.manifest && app.manifest.icons;
+    var iconPath;
+
+    if (icons) {
+      var sizes = Object.keys(icons).map(function parse(str) {
+        return parseInt(str, 10);
+      });
+
+      sizes.sort(function(x, y) { return y - x; });
+
+      var index = sizes[(HVGA) ? sizes.length - 1 : 0];
+      iconPath = icons[index];
+    } else {
+      iconPath = app.icon;
+    }
+
+    if (!iconPath) {
       return null;
     }
 
-    var sizes = Object.keys(icons).map(function parse(str) {
-      return parseInt(str, 10);
-    });
-
-    sizes.sort(function(x, y) { return y - x; });
-
-    var index = sizes[(HVGA) ? sizes.length - 1 : 0];
-    var iconPath = icons[index];
-
     if (iconPath.indexOf('data:') !== 0) {
-      iconPath = origin + iconPath;
+      // We need to resolve iconPath as a relative url to origin, since
+      // origin can be a full url in some apps.
+      var base = getOriginObject(app.origin);
+      var port = base.port ? (':' + base.port) : '';
+      iconPath = base.protocol + '//' + base.hostname + port + iconPath;
     }
 
     return iconPath;
@@ -66,14 +95,15 @@ var CardsView = (function() {
 
   function escapeHTML(str, escapeQuotes) {
     var stringHTML = str;
-    stringHTML = stringHTML.replace(/\</g, '&#60;');
+    stringHTML = stringHTML.replace(/\</g, '&#60;'); // jshint ignore: line
     stringHTML = stringHTML.replace(/(\r\n|\n|\r)/gm, '<br/>');
     stringHTML = stringHTML.replace(/\s\s/g, ' &nbsp;');
 
-    if (escapeQuotes)
+    if (escapeQuotes) {
       // The //" is to help dumb editors understand that there's not a
       // open string at EOL.
       return stringHTML.replace(/"/g, '&quot;').replace(/'/g, '&#x27;'); //"
+    }
     return stringHTML;
   }
 
@@ -121,8 +151,9 @@ var CardsView = (function() {
     var inTimeCapture = lastInTimeCapture;
     lastInTimeCapture = false;
 
-    if (cardSwitcherIsShown())
+    if (cardSwitcherIsShown()) {
       return;
+    }
 
     // events to handle
     window.addEventListener('lock', CardsView);
@@ -187,11 +218,6 @@ var CardsView = (function() {
     // Make sure we're in default orientation
     screen.mozLockOrientation(OrientationManager.defaultOrientation);
 
-    // If there is a displayed app, take keyboard focus away
-    if (currentPosition) {
-      stack[currentPosition].blur();
-    }
-
     placeCards();
     // At the beginning only the current card can listen to tap events
     currentCardStyle.pointerEvents = 'auto';
@@ -223,45 +249,34 @@ var CardsView = (function() {
       screenshotView.classList.add('screenshotView');
       card.appendChild(screenshotView);
 
-      //display app icon on the tab
-      if (DISPLAY_APP_ICON) {
-        var iconURI = getIconURI(position);
-        if (iconURI) {
-          var appIcon = document.createElement('img');
-          appIcon.classList.add('appIcon');
-          appIcon.src = iconURI;
-          card.appendChild(appIcon);
-        }
+      // app icon overlays screenshot by default
+      // and will be removed if/when we display the screenshot
+      var iconURI = getIconURI(position);
+      var appIconView = document.createElement('div');
+      appIconView.classList.add('appIconView');
+      card.appendChild(appIconView);
+      if (iconURI) {
+          appIconView.style.backgroundImage = 'url(' + iconURI + ')';
       }
+      card.classList.add('appIconPreview');
 
       var title = document.createElement('h1');
       title.textContent = app.name;
       card.appendChild(title);
 
-      var frameForScreenshot = app.iframe;
+      var frameForScreenshot = useAppScreenshotPreviews &&
+        app.getFrameForScreenshot();
 
       var origin = stack[position].origin;
-      if (PopupManager.getPopupFromOrigin(origin)) {
-        var popupFrame =
-          PopupManager.getPopupFromOrigin(origin);
-        frameForScreenshot = popupFrame;
-
+      if (getOffOrigin(frameForScreenshot.src, app.origin)) {
         var subtitle = document.createElement('p');
-        subtitle.textContent =
-          PopupManager.getOpenedOriginFromOpener(app.origin);
-        card.appendChild(subtitle);
-        card.classList.add('popup');
-      } else if (getOffOrigin(app.iframe.dataset.url ?
-            app.iframe.dataset.url : app.iframe.src, app.origin)) {
-        var subtitle = document.createElement('p');
-        subtitle.textContent = getOffOrigin(app.iframe.dataset.url ?
-            app.iframe.dataset.url : app.iframe.src, app.origin);
+        subtitle.textContent = getOffOrigin(frameForScreenshot.src, app.origin);
         card.appendChild(subtitle);
       }
 
       if (TrustedUIManager.hasTrustedUI(app.origin)) {
         var popupFrame = TrustedUIManager.getDialogFromOrigin(app.origin);
-        frameForScreenshot = popupFrame.frame;
+        frameForScreenshot = useAppScreenshotPreviews && popupFrame.frame;
         var header = document.createElement('section');
         header.setAttribute('role', 'region');
         header.classList.add('skin-organic');
@@ -286,8 +301,13 @@ var CardsView = (function() {
 
       card.addEventListener('onviewport', function onviewport() {
         card.style.display = 'block';
-        if (screenshotView.style.backgroundImage) {
-          return;
+        if (useAppScreenshotPreviews) {
+          card.classList.remove('appIconPreview');
+          if (screenshotView.style.backgroundImage) {
+            return;
+          }
+        } else {
+          card.classList.add('appIconPreview');
         }
 
         // Handling cards in different orientations
@@ -297,12 +317,18 @@ var CardsView = (function() {
             degree == 270) {
           isLandscape = true;
         }
+
         // Rotate screenshotView if needed
         screenshotView.classList.add('rotate-' + degree);
+        if (!useAppScreenshotPreviews) {
+          return;
+        }
+
+        var width, height;
         if (isLandscape) {
           // We must exchange width and height if it's landscape mode
-          var width = card.clientHeight;
-          var height = card.clientWidth;
+          width = card.clientHeight;
+          height = card.clientWidth;
           screenshotView.style.width = width + 'px';
           screenshotView.style.height = height + 'px';
           screenshotView.style.left = ((height - width) / 2) + 'px';
@@ -327,29 +353,36 @@ var CardsView = (function() {
 
           // rect is the final size (considering CSS transform) of the card.
           var rect = card.getBoundingClientRect();
-          var width = isLandscape ? rect.height : rect.width;
-          var height = isLandscape ? rect.width : rect.height;
-          frameForScreenshot.getScreenshot(
-            width, height).onsuccess =
-            function gotScreenshot(screenshot) {
-              var blob = screenshot.target.result;
-              if (blob) {
-                var objectURL = URL.createObjectURL(blob);
+          width = isLandscape ? rect.height : rect.width;
+          height = isLandscape ? rect.width : rect.height;
+          var request = frameForScreenshot.getScreenshot(
+            width, height);
+          request.onsuccess = function gotScreenshot(screenshot) {
+            var blob = screenshot.target.result;
+            if (blob) {
+              var objectURL = URL.createObjectURL(blob);
 
-                // Overwrite the cached image to prevent flickering
-                screenshotView.style.backgroundImage =
-                  'url(' + objectURL + '), url(' + cachedLayer + ')';
+              // Overwrite the cached image to prevent flickering
+              screenshotView.style.backgroundImage =
+                'url(' + objectURL + '), url(' + cachedLayer + ')';
 
-                app.renewCachedScreenshotBlob(blob);
+              app.renewCachedScreenshotBlob(blob);
 
-                // setTimeout is needed to ensure that the image is fully drawn
-                // before we remove it. Otherwise the rendering is not smooth.
-                // See: https://bugzilla.mozilla.org/show_bug.cgi?id=844245
-                setTimeout(function() {
-                  URL.revokeObjectURL(objectURL);
-                }, 200);
-              }
-            };
+              // setTimeout is needed to ensure that the image is fully drawn
+              // before we remove it. Otherwise the rendering is not smooth.
+              // See: https://bugzilla.mozilla.org/show_bug.cgi?id=844245
+              setTimeout(function() {
+                URL.revokeObjectURL(objectURL);
+              }, 200);
+            } else {
+              // failed to get screenshot, fallback to using icon
+              card.classList.add('appIconPreview');
+            }
+          };
+          request.onerror = function screenshotError() {
+            // failed to get screenshot, fallback to using icon
+            card.classList.add('appIconPreview');
+          };
         }
       });
     }
@@ -446,8 +479,9 @@ var CardsView = (function() {
   getOffOrigin.cache = {};
 
   function hideCardSwitcher(removeImmediately, newStackPosition) {
-    if (!cardSwitcherIsShown())
+    if (!cardSwitcherIsShown()) {
       return;
+    }
 
     // events to handle
     window.removeEventListener('lock', CardsView);
@@ -488,6 +522,10 @@ var CardsView = (function() {
     return cardsViewShown;
   }
 
+  function screenshotPreviewsEnabled() {
+    return useAppScreenshotPreviews;
+  }
+
   //scrolling cards (Positon 0 is x-coord and position 1 is y-coord)
   var initialTouchPosition = [0, 0];
   // If the pointer down event starts outside of a card, then there's
@@ -499,7 +537,6 @@ var CardsView = (function() {
   // switching the card.  It doesn't make sense for users to start
   // swiping because they want to stay on the same card.
   var threshold = 1;
-  var thresholdOrdering = 100;
   // Distance after which dragged card starts moving
   var moveCardThreshold = window.innerHeight / 6;
   // Arbitrarily chosen to be 4x larger than the gecko18 drag
@@ -522,9 +559,6 @@ var CardsView = (function() {
     addEventListener: function() {}
   };
 
-  var onViewPortEvent = new CustomEvent('onviewport');
-  var outViewPortEvent = new CustomEvent('outviewport');
-
   // Scale for current card
   var CC_SCALE = 0.8;
   // Scale for current card's siblings
@@ -543,16 +577,16 @@ var CardsView = (function() {
       return;
     }
 
-    currentCard.dispatchEvent(onViewPortEvent);
+    currentCard.dispatchEvent(new CustomEvent('onviewport'));
     // Link to the style objects of the cards
     currentCardStyle = currentCard.style;
 
     prevCard = currentCard.previousElementSibling || pseudoCard;
-    prevCard.dispatchEvent(onViewPortEvent);
+    prevCard.dispatchEvent(new CustomEvent('onviewport'));
     prevCardStyle = prevCard.style;
 
     nextCard = currentCard.nextElementSibling || pseudoCard;
-    nextCard.dispatchEvent(onViewPortEvent);
+    nextCard.dispatchEvent(new CustomEvent('onviewport'));
     nextCardStyle = nextCard.style;
 
     // Scaling and translating cards to reach target positions
@@ -572,9 +606,9 @@ var CardsView = (function() {
   function alignCurrentCard(noTransition) {
     // We're going to release memory hiding card out of screen
     if (deltaX < 0) {
-      prevCard && prevCard.dispatchEvent(outViewPortEvent);
+      prevCard && prevCard.dispatchEvent(new CustomEvent('outviewport'));
     } else {
-      nextCard && nextCard.dispatchEvent(outViewPortEvent);
+      nextCard && nextCard.dispatchEvent(new CustomEvent('outviewport'));
     }
 
     // Disable previous current card
@@ -610,9 +644,9 @@ var CardsView = (function() {
     var oppositeCard = nextCardStyle;
     var translateSign = -100;
     if (deltaX > 0) {
-      var card = nextCardStyle;
-      var oppositeCard = prevCardStyle;
-      var translateSign = 100;
+      card = nextCardStyle;
+      oppositeCard = prevCardStyle;
+      translateSign = 100;
     }
 
     var movementFactor = Math.abs(deltaX) / windowWidth;
@@ -768,17 +802,10 @@ var CardsView = (function() {
     }
   }
 
-  function maybeShowInRocketbar() {
-    if (Rocketbar.enabled) {
-      Rocketbar.render(true);
-    } else {
-      showCardSwitcher();
-    }
-  }
-
   function goToHomescreen(evt) {
-    if (!cardSwitcherIsShown())
+    if (!cardSwitcherIsShown()) {
       return;
+    }
 
     window.dispatchEvent(new CustomEvent('cardviewclosedhome'));
 
@@ -838,17 +865,18 @@ var CardsView = (function() {
         break;
 
       case 'holdhome':
-        if (window.lockScreen && window.lockScreen.locked)
+        if (window.lockScreen && window.lockScreen.locked) {
           return;
+        }
 
         SleepMenu.hide();
         var app = AppWindowManager.getActiveApp();
         if (!app) {
-          maybeShowInRocketbar();
+          showCardSwitcher();
         } else {
           app.getScreenshot(function onGettingRealtimeScreenshot() {
             lastInTimeCapture = true;
-            maybeShowInRocketbar();
+            showCardSwitcher();
           });
         }
         break;
@@ -866,6 +894,8 @@ var CardsView = (function() {
     showCardSwitcher: showCardSwitcher,
     hideCardSwitcher: hideCardSwitcher,
     cardSwitcherIsShown: cardSwitcherIsShown,
+    _screenshotPreviewsEnabled: screenshotPreviewsEnabled,
+    _getIconURI: getIconURI,
     handleEvent: cv_handleEvent,
     _escapeHTML: escapeHTML
   };

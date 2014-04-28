@@ -20,12 +20,12 @@
 require('/shared/js/lazy_loader.js');
 require('/shared/js/text_normalizer.js');
 require('/shared/js/tag_visibility_monitor.js');
+require('/shared/js/contacts/utilities/dom.js');
+require('/shared/js/contacts/utilities/templates.js');
+require('/shared/js/contacts/utilities/event_listeners.js');
 require('/shared/test/unit/mocks/mock_contact_all_fields.js');
 requireApp('communications/contacts/js/views/search.js');
 requireApp('communications/contacts/js/views/list.js');
-requireApp('communications/contacts/js/utilities/dom.js');
-requireApp('communications/contacts/js/utilities/event_listeners.js');
-requireApp('communications/contacts/js/utilities/templates.js');
 requireApp('communications/contacts/test/unit/mock_cookie.js');
 requireApp('communications/contacts/test/unit/mock_asyncstorage.js');
 requireApp('communications/contacts/test/unit/mock_navigation.js');
@@ -364,7 +364,6 @@ suite('Render contacts list', function() {
         };
       }
     };
-
 
     realContacts = window.Contacts;
     window.Contacts = MockContacts;
@@ -1087,6 +1086,31 @@ suite('Render contacts list', function() {
       });
     });
 
+    test('Search gets updated if contact changes',
+        function(done) {
+      mockContacts = new MockContactsList();
+      var contact = mockContacts[0];
+
+      doLoad(subject, mockContacts, function() {
+        contacts.Search.enterSearchMode({preventDefault: function() {}});
+        // Search by the first character
+        searchBox.value = contact.givenName[0][0];
+        contacts.Search.search(function search_finished() {
+          assertContactFound(contact);
+          // Keep the first character to have the same search valid
+          contact.givenName[0] = contact.givenName[0][0] + ' New Name';
+          sinon.spy(contacts.Search, 'updateSearchList');
+          subject.refresh(contact, function() {
+            var listStr = list.textContent;
+            assert.isTrue(listStr.indexOf(contact.givenName[0]) !== -1);
+            var searchListStr = searchList.textContent;
+            assert.isTrue(searchListStr.indexOf(contact.givenName[0]) !== -1);
+            done();
+          });
+        });
+      });
+    });
+
     test('Search non-alphabetical characters', function(done) {
       mockContacts = new MockContactsList();
 
@@ -1390,17 +1414,6 @@ suite('Render contacts list', function() {
 
         done();
       }, mockNavigationStack, 'transition');
-    });
-
-    test('enter search mode', function() {
-      contacts.List.initSearch(function onInit() {
-        contacts.Search.enterSearchMode({preventDefault: function() {}});
-        assert.equal(mockNavigationStack.getCurrentView(),
-                     'search-view');
-        assert.equal(mockNavigationStack.getCurrentTransition(),
-                     'none');
-        contacts.Search.exitSearchMode({preventDefault: function() {}});
-      });
     });
 
     suite('Selection checks', function() {

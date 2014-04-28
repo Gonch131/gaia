@@ -130,15 +130,15 @@ var Browser = {
     var filesToLoad = [
       // css files
       'shared/style/headers.css',
-      'shared/style/buttons.css',
-      'shared/style/input_areas.css',
+      'shared/style_unstable/buttons.css',
+      'shared/style_unstable/input_areas.css',
       'shared/style/status.css',
       'shared/style/confirm.css',
+      'shared/style/action_menu.css',
       'style/modal_dialog/modal_dialog.css',
       'style/modal_dialog/prompt.css',
       'style/themes/default/core.css',
       'style/themes/default/buttons.css',
-      'style/action_menu.css',
       'style/authentication_dialog.css',
       'style/settings.css',
       'style/awesomescreen.css',
@@ -771,33 +771,33 @@ var Browser = {
         if (bookmark) {
           if (from && from === 'bookmarksTab') { //show actions in bookmark tab
 
-            this.bookmarkMenuAdd.parentNode.classList.add('hidden');
+            this.bookmarkMenuAdd.classList.add('hidden');
             //append url to button's dataset
             this.bookmarkMenuRemove.dataset.url = url;
-            this.bookmarkMenuRemove.parentNode.classList.remove('hidden');
+            this.bookmarkMenuRemove.classList.remove('hidden');
             //XXX not implement yet: edit bookmark in bookmarktab #838041
-            this.bookmarkMenuEdit.parentNode.classList.add('hidden');
+            this.bookmarkMenuEdit.classList.add('hidden');
             //XXX not implement yet: link to home in bookmarktab #850999
-            this.bookmarkMenuAddHome.parentNode.classList.add('hidden');
+            this.bookmarkMenuAddHome.classList.add('hidden');
 
           } else { //show actions in browser page
 
-            this.bookmarkMenuAdd.parentNode.classList.add('hidden');
+            this.bookmarkMenuAdd.classList.add('hidden');
             this.bookmarkMenuRemove.dataset.url = url;
-            this.bookmarkMenuRemove.parentNode.classList.remove('hidden');
+            this.bookmarkMenuRemove.classList.remove('hidden');
             this.bookmarkMenuEdit.dataset.url = url;
-            this.bookmarkMenuEdit.parentNode.classList.remove('hidden');
+            this.bookmarkMenuEdit.classList.remove('hidden');
             //XXX not implement yet: link to home in bookmarktab #850999
-            this.bookmarkMenuAddHome.parentNode.classList.remove('hidden');
+            this.bookmarkMenuAddHome.classList.remove('hidden');
 
           }
         } else { //show actions in browser page
 
-          this.bookmarkMenuAdd.parentNode.classList.remove('hidden');
-          this.bookmarkMenuRemove.parentNode.classList.add('hidden');
-          this.bookmarkMenuEdit.parentNode.classList.add('hidden');
+          this.bookmarkMenuAdd.classList.remove('hidden');
+          this.bookmarkMenuRemove.classList.add('hidden');
+          this.bookmarkMenuEdit.classList.add('hidden');
           //XXX not implement yet: link to home in bookmarktab #850999
-          this.bookmarkMenuAddHome.parentNode.classList.remove('hidden');
+          this.bookmarkMenuAddHome.classList.remove('hidden');
 
         }
       }).bind(this));
@@ -1422,6 +1422,11 @@ var Browser = {
   },
 
   showPageScreen: function browser_showPageScreen() {
+
+    if (this.currentTab.crashed) {
+      this.reviveCrashedTab(this.currentTab);
+    }
+
     if (this.currentScreen === this.TABS_SCREEN) {
       var switchLive = (function browser_switchLive() {
         this.mainScreen.removeEventListener('transitionend', switchLive, true);
@@ -1443,11 +1448,6 @@ var Browser = {
 
     this.switchScreen(this.PAGE_SCREEN);
     this.setUrlBar(this.currentTab.title || this.currentTab.url);
-    if (this.currentTab.crashed) {
-      this.showCrashScreen();
-    } else {
-      this.hideCrashScreen();
-    }
     this.updateTabsCount();
     this.inTransition = false;
   },

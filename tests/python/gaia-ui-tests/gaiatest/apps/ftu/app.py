@@ -45,6 +45,9 @@ class Ftu(Base):
     _import_from_sim_locator = (By.ID, 'sim-import-button')
     _sim_import_feedback_locator = (By.ID, 'statusMsg')
 
+    # Step Firefox Accounts
+    _section_firefox_accounts_locator = (By.ID, 'firefox_accounts')
+
     # Section Welcome Browser
     _section_welcome_browser_locator = (By.ID, 'welcome_browser')
     _enable_statistic_checkbox_locator = (By.ID, 'form_share_statistics')
@@ -59,16 +62,12 @@ class Ftu(Base):
     _take_tour_button_locator = (By.ID, 'lets-go-button')
 
     # Section Tour
-    _step1_header_locator = (By.ID, 'step1Header')
-    _step2_header_locator = (By.ID, 'step2Header')
-    _step3_header_locator = (By.ID, 'step3Header')
-    _step4_header_locator = (By.ID, 'step4Header')
-    _step5_header_locator = (By.ID, 'step5Header')
+    _step_header_locator = (By.ID, 'tutorial-step-title')
     _tour_next_button_locator = (By.ID, 'forward-tutorial')
     _tour_back_button_locator = (By.ID, 'back-tutorial')
 
     # Section Tutorial Finish
-    _section_tutorial_finish_locator = (By.CSS_SELECTOR, '.tutorial-finish-base')
+    _section_tutorial_finish_locator = (By.ID, 'tutorial-finish-tiny')
     _lets_go_button_locator = (By.ID, 'tutorialFinished')
 
     # Pattern for import sim contacts message
@@ -170,6 +169,10 @@ class Ftu(Base):
             import_sim_count = int(count)
         return import_sim_count
 
+    def tap_next_to_firefox_accounts_section(self):
+        self.tap_next()
+        self.wait_for_element_displayed(*self._section_firefox_accounts_locator)
+
     def tap_next_to_welcome_browser_section(self):
         self.tap_next()
         self.wait_for_element_displayed(*self._section_welcome_browser_locator)
@@ -207,8 +210,8 @@ class Ftu(Base):
 
     @property
     def step1_header_text(self):
-        self.wait_for_element_displayed(*self._step1_header_locator)
-        return self.marionette.find_element(*self._step1_header_locator).text
+        self.wait_for_element_displayed(*self._step_header_locator)
+        return self.marionette.find_element(*self._step_header_locator).text
 
     def tap_tour_next(self):
         self.wait_for_element_displayed(*self._tour_next_button_locator)
@@ -220,23 +223,28 @@ class Ftu(Base):
 
     @property
     def step2_header_text(self):
-        self.wait_for_element_displayed(*self._step2_header_locator)
-        return self.marionette.find_element(*self._step2_header_locator).text
+        self.wait_for_element_displayed(*self._step_header_locator)
+        return self.marionette.find_element(*self._step_header_locator).text
 
     @property
     def step3_header_text(self):
-        self.wait_for_element_displayed(*self._step3_header_locator)
-        return self.marionette.find_element(*self._step3_header_locator).text
+        self.wait_for_element_displayed(*self._step_header_locator)
+        return self.marionette.find_element(*self._step_header_locator).text
 
     @property
     def step4_header_text(self):
-        self.wait_for_element_displayed(*self._step4_header_locator)
-        return self.marionette.find_element(*self._step4_header_locator).text
+        self.wait_for_element_displayed(*self._step_header_locator)
+        return self.marionette.find_element(*self._step_header_locator).text
 
     @property
     def step5_header_text(self):
-        self.wait_for_element_displayed(*self._step5_header_locator)
-        return self.marionette.find_element(*self._step5_header_locator).text
+        self.wait_for_element_displayed(*self._step_header_locator)
+        return self.marionette.find_element(*self._step_header_locator).text
+
+    @property
+    def step6_header_text(self):
+        self.wait_for_element_displayed(*self._step_header_locator)
+        return self.marionette.find_element(*self._step_header_locator).text
 
     def wait_for_finish_tutorial_section(self):
         self.wait_for_element_displayed(*self._section_tutorial_finish_locator)

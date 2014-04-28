@@ -44,7 +44,7 @@
         this.openAnimation = this.app.openAnimation;
       }
 
-      if (this.app.closeAnimation){
+      if (this.app.closeAnimation) {
         this.closeAnimation = this.app.closeAnimation;
       }
 
@@ -190,6 +190,7 @@
         return;
       }
 
+      this.resetTransition();
       this.app.setVisible(false, true);
       this.app.element.setAttribute('aria-hidden', 'true');
       this.app.element.classList.remove('active');
@@ -296,7 +297,8 @@
       var classes = ['enlarge', 'reduce', 'to-cardview', 'from-cardview',
         'invoking', 'invoked', 'zoom-in', 'zoom-out', 'fade-in', 'fade-out',
         'transition-opening', 'transition-closing', 'immediate',
-        'slideleft', 'slideright', 'in-from-left', 'out-to-right'];
+        'slideleft', 'slideright', 'in-from-left', 'out-to-right',
+        'slideup', 'slidedown', 'will-become-active', 'will-become-inactive'];
 
       classes.forEach(function iterator(cls) {
         this.app.element.classList.remove(cls);

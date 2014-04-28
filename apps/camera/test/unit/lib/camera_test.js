@@ -1,3 +1,5 @@
+/*jshint maxlen:false*/
+
 suite('lib/camera', function() {
   'use strict';
   var require = window.req;
@@ -28,10 +30,22 @@ suite('lib/camera', function() {
     // Fake mozCamera
     this.mozCamera = {
       autoFocus: sinon.stub(),
-      release: sinon.stub()
+      release: sinon.stub(),
+      setConfiguration: sinon.stub(),
+      capabilities: {}
     };
 
-    this.camera = new this.Camera();
+    this.options = {
+      storage: {
+        setItem: sinon.stub(),
+        getItem: sinon.stub()
+      }
+    };
+
+    // Aliases
+    this.storage = this.options.storage;
+
+    this.camera = new this.Camera(this.options);
     this.sandbox.stub(this.camera, 'emit');
   });
 
@@ -42,7 +56,6 @@ suite('lib/camera', function() {
   suite('Camera#focus()', function() {
     setup(function() {
       this.camera = {
-        autoFocus: {},
         set: sinon.spy(),
         mozCamera: this.mozCamera,
         focus: this.Camera.prototype.focus,
@@ -58,16 +71,20 @@ suite('lib/camera', function() {
 
     test('Should not call mozCamera.autoFocus if not supported', function() {
       var done = sinon.spy();
-      this.camera.autoFocus.auto = false;
+
+      this.camera.mozCamera.focusMode = 'infinity';
+
       this.camera.focus(done);
+      this.clock.tick();
       assert.ok(!this.camera.mozCamera.autoFocus.called);
       assert.ok(done.called);
     });
 
-    test('Should call to focus the camera if supported', function() {
+    test('Should call autoFocus if supported manual AF supported', function() {
       var done = sinon.spy();
 
-      this.camera.autoFocus.auto = true;
+      this.camera.mozCamera.focusMode = 'auto';
+
       this.camera.mozCamera.autoFocus.callsArgWith(0, true);
 
       this.camera.focus(done);
@@ -90,7 +107,7 @@ suite('lib/camera', function() {
     test('Should repond correctly on focus failure', function() {
       var done = sinon.spy();
 
-      this.camera.autoFocus.auto = true;
+      this.camera.mozCamera.focusMode = 'auto';
       this.camera.mozCamera.autoFocus.callsArgWith(0, false);
 
       this.camera.focus(done);
@@ -108,16 +125,17 @@ suite('lib/camera', function() {
 
       // The callback
       assert.ok(done.calledWith('failed'));
-
-      this.clock.tick(1001);
-      assert.ok(this.camera.set.calledWith('focus', 'none'));
     });
   });
 
   suite('Camera#startRecording()', function() {
     setup(function() {
       this.options = {
-        orientation: { get: sinon.stub().returns(0) },
+        orientation: {
+          get: sinon.stub().returns(0),
+          start: sinon.stub(),
+          stop: sinon.stub()
+        },
         recordSpaceMin: 999,
         recordSpacePadding: 100
       };
@@ -239,34 +257,6 @@ suite('lib/camera', function() {
       this.camera.mozCamera.startRecording.callsArg(4);
       this.camera.startRecording();
       assert.ok(this.camera.onRecordingError.called);
-    });
-  });
-
-  suite('Camera#configureFocus()', function() {
-    setup(function() {
-      this.camera = {
-        autoFocus: {},
-        configureFocus: this.Camera.prototype.configureFocus
-      };
-    });
-
-    test('Should convert modes to a hash', function() {
-      var modes = ['auto', 'infinity', 'normal', 'macro'];
-      this.camera.configureFocus(modes);
-
-      assert.ok('auto' in this.camera.autoFocus);
-      assert.ok('infinity' in this.camera.autoFocus);
-      assert.ok('normal' in this.camera.autoFocus);
-      assert.ok('macro' in this.camera.autoFocus);
-    });
-
-    test('Should empty hash each time', function() {
-      this.camera.configureFocus(['infinity']);
-      assert.ok('infinity' in this.camera.autoFocus);
-      this.camera.configureFocus(['auto', 'normal']);
-      assert.ok('auto' in this.camera.autoFocus);
-      assert.ok('normal' in this.camera.autoFocus);
-      assert.ok(!('infinity' in this.camera.autoFocus));
     });
   });
 
@@ -531,39 +521,31 @@ suite('lib/camera', function() {
     });
 
     test('Should `requestCamera` first time called', function() {
-      var callback = sinon.spy();
-      this.camera.load(callback);
-
-      assert.isTrue(this.camera.requestCamera.calledWith('back'));
+      this.camera.load();
+      assert.isTrue(this.camera.requestCamera.called);
       assert.isFalse(this.camera.release.called);
-      assert.isTrue(callback.calledOnce);
     });
 
     test('Should `release` camera then `request` if selectedCamera changed', function() {
       var requestCamera = this.camera.requestCamera;
       var release = this.camera.release;
-      var callback = sinon.spy();
 
       this.camera.load();
       this.camera.set('selectedCamera', 'front');
       this.camera.requestCamera.reset();
 
-      this.camera.load(callback);
+      this.camera.load();
       assert.isTrue(release.calledBefore(requestCamera));
-      assert.isTrue(requestCamera.calledWith('front'));
-      assert.isTrue(callback.calledOnce);
+      assert.isTrue(requestCamera.calledOnce);
     });
 
     test('Should just `configureCamera` if selected camera has\'t changed', function() {
-      var callback = sinon.spy();
-
       this.camera.load();
       this.camera.requestCamera.reset();
 
-      this.camera.load(callback);
+      this.camera.load();
       assert.isTrue(this.camera.configureCamera.called);
       assert.isFalse(this.camera.requestCamera.called);
-      assert.equal(callback.callCount, 1);
     });
   });
 
@@ -571,35 +553,113 @@ suite('lib/camera', function() {
     setup(function() {
       this.camera = new this.Camera();
       this.sandbox.stub(this.camera, 'configureCamera');
+      this.sandbox.stub(this.camera, 'get');
       navigator.mozCameras.getCamera.callsArgWith(2, this.mozCamera);
+
+      this.camera.get
+        .withArgs('selectedCamera')
+        .returns('back');
     });
 
-    test('Should call `navigator.mozCameras.getCamera()`', function() {
-      this.camera.requestCamera('back');
-      assert.isTrue(navigator.mozCameras.getCamera.called);
+    test('Should call `navigator.mozCameras.getCamera()` with currently selected camera', function() {
+      this.camera.requestCamera();
+      assert.isTrue(navigator.mozCameras.getCamera.calledWith('back'));
+      navigator.mozCameras.getCamera.reset();
+
+      this.camera.get
+        .withArgs('selectedCamera')
+        .returns('front');
+
+      this.camera.requestCamera();
+      assert.isTrue(navigator.mozCameras.getCamera.calledWith('front'));
+    });
+
+    test('Should call get camera with the passed config', function() {
+      this.mozCameraConfig = {};
+      this.camera.requestCamera(this.mozCameraConfig);
+      assert.isTrue(navigator.mozCameras.getCamera.calledOnce);
+    });
+
+    test('Should flag a `preConfigured` if a cached config was used', function() {
+      this.camera.getCachedConfig = sinon.stub();
+
+      this.camera.getCachedConfig.returns({});
+      this.camera.requestCamera();
+      assert.isTrue(this.camera.preConfigured);
+
+      this.camera.getCachedConfig.returns(undefined);
+      this.camera.requestCamera();
+      assert.isFalse(this.camera.preConfigured);
     });
 
     test('Should call .configureCamera', function() {
       var callback = sinon.spy();
-      this.camera.requestCamera('back', callback);
+      this.camera.requestCamera({}, callback);
       assert.isTrue(this.camera.configureCamera.calledWith(this.mozCamera));
     });
 
-    test('Should call the callback', function() {
-      var callback = sinon.spy();
-      this.camera.requestCamera('back', callback);
-      assert.isTrue(callback.called);
+    test('Should not configure camera on error', function() {
+      navigator.mozCameras.getCamera.callsArgWith(3, 'error');
+      this.camera.requestCamera();
+      assert.isFalse(this.camera.configureCamera.called);
+    });
+  });
+
+  suite('Camera#configure()', function() {
+    setup(function() {
+      this.camera.mode = 'picture';
+      this.camera.mozCamera = this.mozCamera;
+      this.camera.recorderProfile = { key: '720p' };
+      this.mozCamera.setConfiguration.callsArg(1);
+      this.sandbox.stub(this.camera, 'previewSize');
+      this.sandbox.spy(this.camera, 'setCachedConfig');
+      this.camera.previewSize.returns({ width: 400, height: 300 });
     });
 
-    test('Should pass a single argument on error', function() {
-      var callback = sinon.spy();
+    test('Should call `mozCamera.setConfiguration` with expected config', function() {
+      this.camera.configure();
 
-      // Simulate error callback
-      navigator.mozCameras.getCamera.restore();
-      this.sandbox.stub(navigator.mozCameras, 'getCamera').callsArgWith(3, 'error');
+      var config = this.mozCamera.setConfiguration.args[0][0];
 
-      this.camera.requestCamera('back', callback);
-      assert.isTrue(callback.calledWith('error'));
+      assert.deepEqual(config, {
+        mode: 'picture',
+        previewSize: { width: 400, height: 300 },
+        recorderProfile: '720p'
+      });
+    });
+
+    test('Should emit a \'configured\' event', function() {
+      this.camera.configure();
+      assert.isTrue(this.camera.emit.calledWith('configured'));
+    });
+
+    test('Should cache the config', function() {
+      this.camera.configure();
+      assert.isTrue(this.camera.setCachedConfig.called);
+      assert.deepEqual(this.camera.setCachedConfig.args[0][0], {
+        mode: 'picture',
+        previewSize: { width: 400, height: 300 },
+        recorderProfile: '720p'
+      });
+    });
+
+    test('Should not configure if there is no mozCamera', function() {
+      delete this.camera.mozCamera;
+      this.camera.configure();
+      assert.isFalse(this.mozCamera.setConfiguration.called);
+    });
+
+    test('Should not call `setConfiguration` if the camera was pre-configured', function() {
+      this.camera.preConfigured = true;
+      this.camera.configure();
+      assert.isFalse(this.mozCamera.setConfiguration.called);
+      assert.isTrue(this.camera.emit.calledWith('configured'));
+    });
+
+    test('Should set `preConfigured` to false after', function() {
+      this.camera.preConfigured = true;
+      this.camera.configure();
+      assert.isFalse(this.camera.preConfigured);
     });
   });
 
@@ -633,8 +693,6 @@ suite('lib/camera', function() {
     });
 
     test('Should call the callback with an error argument', function(done) {
-      var self = this;
-
       this.mozCamera.release = sinon.stub();
       this.mozCamera.release.callsArgWithAsync(1, 'error');
 
@@ -642,6 +700,57 @@ suite('lib/camera', function() {
         assert.equal(err, 'error');
         done();
       });
+    });
+  });
+
+  suite('Camera#getCachedConfig()', function() {
+    setup(function() {
+      this.storage.getItem
+        .withArgs('mozCameraConfig')
+        .returns('{"some":"data"}');
+
+      this.options.cacheConfig = true;
+      this.camera = new this.Camera(this.options);
+    });
+
+    test('Should return the object from storage', function() {
+      var result = this.camera.getCachedConfig();
+      assert.deepEqual(result, { some: 'data' });
+    });
+
+    test('Should not return the config more that once', function() {
+      var result1 = this.camera.getCachedConfig();
+      var result2 = this.camera.getCachedConfig();
+
+      assert.deepEqual(result1, { some: 'data' });
+      assert.equal(result2, undefined);
+    });
+
+    test('Should not return anything if `cacheConfig` is off', function() {
+      this.options.cacheConfig = false;
+      this.camera = new this.Camera(this.options);
+
+      var result = this.camera.getCachedConfig();
+      assert.equal(result, undefined);
+    });
+  });
+
+  suite('Camera#setCachedConfig()', function() {
+    setup(function() {
+      this.options.cacheConfig = true;
+      this.camera = new this.Camera(this.options);
+    });
+
+    test('Should store the data as a sting in storage', function() {
+      this.camera.setCachedConfig({ some: 'data' });
+      sinon.assert.calledWith(this.storage.setItem, 'mozCameraConfig', '{"some":"data"}');
+    });
+
+    test('Should not store anything if `cacheConfig` is off', function() {
+      this.options.cacheConfig = false;
+      this.camera = new this.Camera(this.options);
+      this.camera.setCachedConfig({ some: 'data' });
+      sinon.assert.notCalled(this.storage.setItem);
     });
   });
 });

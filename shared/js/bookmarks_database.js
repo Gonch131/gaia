@@ -36,13 +36,15 @@
       if (!navigator.getDataStores) {
         console.error('Bookmark store: DataStore API is not working');
         reject({ name: 'NO_DATASTORE' });
+        readyState = 'failed';
         return;
       }
 
       navigator.getDataStores(DATASTORE_NAME).then(function(ds) {
         if (ds.length < 1) {
           console.error('Bookmark store: Cannot get access to the Store');
-          reject({ message: 'NO_ACCESS_TO_DATASTORE' });
+          reject({ name: 'NO_ACCESS_TO_DATASTORE' });
+          readyState = 'failed';
           return;
         }
 
@@ -106,14 +108,7 @@
       datastore.get(event.id).then(function got(result) {
         callback({
           type: operation,
-          target: result
-        });
-      }, function notExists() {
-        callback({
-          type: operation,
-          target: {
-            id: event.id
-          }
+          target: result || event
         });
       });
     });
@@ -155,7 +150,7 @@
   function add(data) {
     return new Promise(function doAdd(resolve, reject) {
       init().then(function onInitialized() {
-        var id = data.bookmarkURL;
+        var id = data.url;
 
         Object.defineProperty(data, 'id', {
           enumerable: true,
@@ -179,6 +174,24 @@
     return new Promise(function doGet(resolve, reject) {
       init().then(function onInitialized() {
         resolve(datastore.revisionId);
+      }, reject);
+    });
+  }
+
+  function put(data) {
+    return new Promise(function doAdd(resolve, reject) {
+      init().then(function onInitialized() {
+        datastore.put(data, data.id).then(function success() {
+          resolve(); // Bookmark was updated
+        }, reject);
+      }, reject);
+    });
+  }
+
+  function remove(id) {
+    return new Promise(function doRemove(resolve, reject) {
+      init().then(function onInitialized() {
+        datastore.remove(id).then(resolve, reject);
       }, reject);
     });
   }
@@ -228,7 +241,21 @@
      *
      * @param{Object} The bookmark's data
      */
-    add: add
+    add: add,
+
+    /*
+     * This method updates a bookmark in the datastore
+     *
+     * @param{Object} The bookmark's data
+     */
+     put: put,
+
+    /*
+     * This method removes a bookmark from the datastore
+     *
+     * @param{String} The bookmark's id
+     */
+     remove: remove
   };
 
 }(window));

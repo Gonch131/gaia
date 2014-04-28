@@ -27,7 +27,7 @@ function HudController(app) {
   this.app = app;
   this.hud = app.views.hud;
   this.settings = app.settings;
-  this.l10n = app.l10n || navigator.mozL10n;
+  this.localize = app.localize;
   this.notification = app.views.notification;
   this.configure();
   this.bindEvents();
@@ -69,6 +69,10 @@ HudController.prototype.bindEvents = function() {
   this.app.on('timer:cleared', this.hud.setter('timer', 'inactive'));
   this.app.on('timer:started', this.hud.setter('timer', 'active'));
   this.app.on('timer:ended', this.hud.setter('timer', 'inactive'));
+
+  // Settings
+  this.app.on('settings:opened', this.hud.hide);
+  this.app.on('settings:closed', this.hud.show);
 };
 
 HudController.prototype.onModeChange = function() {
@@ -94,10 +98,11 @@ HudController.prototype.clearNotifications = function() {
  */
 HudController.prototype.onFlashClick = function() {
   var setting = this.settings.flashModes;
+  var ishdrOn = this.settings.hdr.selected('key') === 'on';
 
   setting.next();
   this.hud.set('flashMode' , setting.selected('key'));
-  this.notify(setting);
+  this.notify(setting, ishdrOn);
 };
 
 /**
@@ -107,10 +112,20 @@ HudController.prototype.onFlashClick = function() {
  * @param  {Setting} setting
  * @private
  */
-HudController.prototype.notify = function(setting) {
-  var optionTitle = this.l10n.get(setting.selected('title'));
-  var title = this.l10n.get(setting.get('title'));
-  var html = title + '<br/>' + optionTitle;
+HudController.prototype.notify = function(setting, hdrDeactivated) {
+  var optionTitle = this.localize(setting.selected('title'));
+  var title = this.localize(setting.get('title'));
+  var html;
+
+  // Check if the `hdr` setting is going to be deactivated as part
+  // of the change in the `flashMode` setting and display a specialized
+  // notification if that is the case
+  if (hdrDeactivated) {
+    html = title + ' ' + optionTitle + '<br/>' +
+      this.localize('hdr-deactivated');
+  } else {
+    html = title + '<br/>' + optionTitle;
+  }
 
   this.flashNotification = this.notification.display({ text: html });
 };

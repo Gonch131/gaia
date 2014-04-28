@@ -33,7 +33,7 @@ suite('Settings >', function() {
   teardown(function() {
     MockNavigatorSettings.mTeardown();
     navigator.mozSettings = nativeSettings;
-    Settings.mmsSizeLimitation = 300 * 1024;
+    Settings.mmsSizeLimitation = 295 * 1024;
   });
 
   test('getSimNameByIccId returns the empty string before init', function() {
@@ -104,11 +104,16 @@ suite('Settings >', function() {
       req.onsuccess();
     }
 
-    function assertSettingIsRetrieved(prop, setting, value) {
+    function assertSettingIsRetrieved(prop, setting, value, expected) {
       triggerSettingsReqSuccess(setting, value);
+
+      if (arguments.length <= 3) {
+        expected = value;
+      }
+
       assert.equal(
-        Settings[prop], value,
-        'The setting ' + setting + ' is equal to ' + value
+        Settings[prop], expected,
+        'The setting ' + setting + ' is equal to ' + expected
       );
     }
 
@@ -149,10 +154,14 @@ suite('Settings >', function() {
       // only made one call to get settings(non-DSDS case)
       sinon.assert.calledOnce(navigator.mozSettings.createLock);
 
+      var setting = 512 * 1024;
+      var expected = setting - 5 * 1024;
+
       assertSettingIsRetrieved(
         'mmsSizeLimitation',
         'dom.mms.operatorSizeLimitation',
-        512000
+        setting,
+        expected
       );
       assert.isFalse(Settings.hasSeveralSim());
     });
@@ -277,7 +286,7 @@ suite('Settings >', function() {
 
     suite('switchSimHandler for async callback when ready', function() {
       var conn;
-      var listenerSpy, switchSimCallback;
+      var listenerSpy;
 
       // The real navigator.mozMobileConnections is not a real array
       var mockMozMobileConnections = {
@@ -312,35 +321,43 @@ suite('Settings >', function() {
 
         conn = window.navigator.mozMobileConnections[1];
         listenerSpy = this.sinon.spy(conn, 'addEventListener');
+        this.sinon.stub(conn, 'removeEventListener');
+        this.sinon.stub(console, 'error');
         Settings.init();
 
-        switchSimCallback = sinon.stub();
-        Settings.switchMmsSimHandler(1, switchSimCallback);
       });
 
-      test('callback should not be triggered if state did not change',
-        function() {
-        listenerSpy.yield();
-
-        assert.equal(
-          MockNavigatorSettings.mSettings['ril.mms.defaultServiceId'], 1
-        );
-        assert.equal(
-          MockNavigatorSettings.mSettings['ril.data.defaultServiceId'], 1
-        );
-        sinon.assert.notCalled(switchSimCallback);
+      test('Should return resolve directly if state is already registered',
+        function(done) {
+        conn.data.state = 'registered';
+        Settings.switchMmsSimHandler(1).then(function onsuccess(){
+          sinon.assert.notCalled(listenerSpy);
+        }).then(done,done);
       });
 
-      test('callback when data connection state changes', function() {
+      test('Should not be triggered if connection does not exist',
+        function(done) {
+        Settings.switchMmsSimHandler('invalid').catch(function onerror(err){
+          sinon.assert.notCalled(conn.removeEventListener);
+          assert.equal(err, 'Invalid connection');
+        }).then(done,done);
+      });
+
+      test('callback when data connection state changes', function(done) {
+        conn.data.state = 'searching';
+        Settings.switchMmsSimHandler(1).then(function onsuccess(){
+         assert.equal(
+            MockNavigatorSettings.mSettings['ril.mms.defaultServiceId'], 1
+          );
+          assert.equal(
+            MockNavigatorSettings.mSettings['ril.data.defaultServiceId'], 1
+          );
+          sinon.assert.calledOnce(conn.removeEventListener);
+        }).then(done,done);
+
         conn.data.state = 'registered';
         listenerSpy.yield();
-        assert.equal(
-          MockNavigatorSettings.mSettings['ril.mms.defaultServiceId'], 1
-        );
-        assert.equal(
-          MockNavigatorSettings.mSettings['ril.data.defaultServiceId'], 1
-        );
-        sinon.assert.calledOnce(switchSimCallback);
+ 
       });
     });
   });

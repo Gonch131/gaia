@@ -427,26 +427,39 @@ var CostControlApp = (function() {
       document.getElementById('message-handler').src = 'message_handler.html';
       Common.waitForDOMAndMessageHandler(window, startApp);
     });
-    // XXX: See bug 944342 -[Cost control] move all the process related to the
-    // network and data interfaces loading to the start-up process of CC
-    Common.loadNetworkInterfaces();
   }
 
   return {
     init: function() {
       var SCRIPTS_NEEDED = [
         'js/utils/debug.js',
-        'js/utils/formatting.js',
-        'js/utils/toolkit.js',
-        'js/settings/networkUsageAlarm.js',
         'js/common.js',
-        'js/costcontrol.js',
-        'js/costcontrol_init.js',
-        'js/config/config_manager.js',
         'js/views/NonReadyScreen.js',
+        'js/utils/toolkit.js',
         'js/view_manager.js'
       ];
-      LazyLoader.load(SCRIPTS_NEEDED, initApp);
+      // Check if the mandatory APIs to work  exist.
+      if (!window.navigator.mozMobileConnections ||
+          !window.navigator.mozIccManager ||
+          !window.navigator.mozNetworkStats) {
+        LazyLoader.load(SCRIPTS_NEEDED, function _showError() {
+          vmanager = new ViewManager();
+          showNonReadyScreen(null);
+        });
+      } else {
+        SCRIPTS_NEEDED = [
+          'js/utils/debug.js',
+          'js/utils/formatting.js',
+          'js/utils/toolkit.js',
+          'js/settings/networkUsageAlarm.js',
+          'js/common.js',
+          'js/costcontrol.js',
+          'js/config/config_manager.js',
+          'js/views/NonReadyScreen.js',
+          'js/view_manager.js'
+        ];
+        LazyLoader.load(SCRIPTS_NEEDED, initApp);
+      }
     },
     reset: function() {
       costcontrol = null;

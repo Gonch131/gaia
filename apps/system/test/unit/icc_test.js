@@ -76,13 +76,14 @@ suite('STK (icc) >', function() {
   setup(function() {
     window.navigator.mozIccManager.addIcc('1010011010');
 
-    stkTestCommands.STK_CMD_GET_INPUT = {
+    stkTestCommands = {
+      STK_CMD_GET_INPUT: {
         iccId: '1010011010',
         command: {
           commandNumber: 1,
           typeOfCommand: navigator.mozIccManager.STK_CMD_GET_INPUT,
           commandQualifier: 0,
-          options:{
+          options: {
             text: 'stk Input test text',
             duration:{
               timeUnit: navigator.mozIccManager.STK_TIME_UNIT_TENTH_SECOND,
@@ -93,7 +94,30 @@ suite('STK (icc) >', function() {
             defaultText: 'default'
           }
         }
-      };
+      },
+
+      STK_CMD_SET_UP_IDLE_MODE_TEXT: {
+        iccId: '1010011010',
+        command: {
+          commandNumber: 1,
+          typeOfCommand: navigator.mozIccManager.STK_CMD_SET_UP_IDLE_MODE_TEXT,
+          commandQualifier: 0,
+          options: {
+            text: 'STK_CMD_SET_UP_IDLE_MODE_TEXT Unit Test'
+          }
+        }
+      },
+
+      STK_CMD_REFRESH: {
+        iccId: '1010011010',
+        command: {
+          commandNumber: 1,
+          typeOfCommand: navigator.mozIccManager.STK_CMD_REFRESH,
+          commandQualifier: 0,
+          options: {}
+        }
+      }
+    };
   });
 
   test('getIcc', function() {
@@ -171,6 +195,31 @@ suite('STK (icc) >', function() {
     }
   });
 
+  test('Sending incomplete message (empty object)', function() {
+    icc.handleSTKCommand({});
+  });
+
+  test('Sending incomplete message (null)', function() {
+    icc.handleSTKCommand(null);
+  });
+
+  test('Sending incomplete message (without iccId)', function() {
+    icc.handleSTKCommand({ command: { typeOfCommand: 0, options: {} } });
+  });
+
+  test('Sending incomplete message (without command)', function() {
+    icc.handleSTKCommand({ iccId: '1234' });
+  });
+
+  test('Sending incomplete message (without command.typeOfCommand)',
+    function() {
+      icc.handleSTKCommand({ command: { options: {} } });
+    });
+
+  test('Sending incomplete message (without command.options)', function() {
+    icc.handleSTKCommand({ command: { typeOfCommand: 0 } });
+  });
+
   test('UI: Input (timeout 1sec)', function(done) {
     var testCmd = stkTestCommands.STK_CMD_GET_INPUT;
     window.icc.input(testCmd, testCmd.command.options.text, 1000,
@@ -236,4 +285,19 @@ suite('STK (icc) >', function() {
     launchStkCommand(stkTestCommands.STK_CMD_GET_INPUT);
   });
 
+  test('launchStkCommand: STK_CMD_SET_UP_IDLE_MODE_TEXT', function(done) {
+    window.icc_worker.onmessagereceived = function(message) {
+      assert.equal(message, stkTestCommands.STK_CMD_SET_UP_IDLE_MODE_TEXT);
+      done();
+    };
+    launchStkCommand(stkTestCommands.STK_CMD_SET_UP_IDLE_MODE_TEXT);
+  });
+
+  test('launchStkCommand: STK_CMD_REFRESH', function(done) {
+    window.icc_worker.onmessagereceived = function(message) {
+      assert.equal(message, stkTestCommands.STK_CMD_REFRESH);
+      done();
+    };
+    launchStkCommand(stkTestCommands.STK_CMD_REFRESH);
+  });
 });

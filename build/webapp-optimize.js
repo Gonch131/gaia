@@ -13,7 +13,14 @@ function debug(str) {
  * note: the `?reload' trick ensures we don't load a cached `l10njs' library.
  */
 
-var win = { navigator: {} };
+var win = {
+  navigator: {},
+  Node: {
+    TEXT_NODE: 3
+  },
+  CustomEvent: function() {},
+  dispatchEvent: function() {},
+};
 let scope = {};
 let JSMin;
 
@@ -416,6 +423,11 @@ function optimize_embedL10nResources(doc, dictionary) {
   // split the l10n dictionary on a per-locale basis,
   // and embed it in the HTML document by enclosing it in <script> nodes.
   for (let lang in dictionary) {
+    // skip to the next language if the dictionary is null
+    if (!dictionary[lang]) {
+      continue;
+    }
+
     let script = doc.createElement('script');
     script.type = 'application/l10n';
     script.lang = lang;
@@ -532,6 +544,11 @@ function optimize_compile(webapp, file, callback) {
   let subDict = newDictionary();
   let fullDict = newDictionary();
 
+  // configure mozL10n.getDictionary to skip the default locale when populating
+  // subDicts
+  let getDictionary = mozL10n.getDictionary.bind(mozL10n,
+                                                 config.GAIA_DEFAULT_LOCALE);
+
   // catch console.[log|warn|info] calls and redirect them to `dump()'
   // XXX for some reason, this won't work if gDEBUG >= 2 in l10n.js
   function optimize_dump(str) {
@@ -546,57 +563,34 @@ function optimize_compile(webapp, file, callback) {
 
   // catch the XHR in `loadResource' and use a local file reader instead
   win.XMLHttpRequest = function() {
-    debug('loadResource');
 
     function open(type, url, async) {
-      this.readyState = 4;
+      debug('loadResource: ' + url);
       this.status = 200;
       this.responseText = optimize_getFileContent(webapp, file, url);
     }
 
+    function addEventListener(type, cb) {
+      if (type === 'load') {
+        this.onload = cb;
+      }
+    }
+
     function send() {
-      this.onreadystatechange();
+      this.onload({
+        'target': {
+          'status': this.status,
+          'responseText': this.responseText,
+        }
+      });
     }
 
     return {
       open: open,
       send: send,
-      onreadystatechange: null
+      addEventListener: addEventListener,
+      onload: null,
     };
-  };
-
-  // catch the `localized' event dispatched by `fireL10nReadyEvent()'
-  win.dispatchEvent = function() {
-    processedLocales++;
-    debug('fireL10nReadyEvent - ' +
-        processedLocales + '/' + l10nLocales.length);
-
-    let docElt = win.document.documentElement;
-    subDict[mozL10n.language.code] = mozL10n.getDictionary(docElt);
-    fullDict[mozL10n.language.code] = mozL10n.getDictionary();
-
-    if (processedLocales < l10nLocales.length) {
-      // load next locale
-      mozL10n.language.code = l10nLocales[processedLocales];
-    } else {
-      // we expect the last locale to be the default one:
-      // set the lang/dir attributes of the current document
-      docElt.dir = mozL10n.language.direction;
-      docElt.lang = mozL10n.language.code;
-
-      // save localized / optimized document
-      let newFile = new FileUtils.File(file.path + '.' +
-        config.GAIA_DEFAULT_LOCALE);
-      optimize_embedHtmlImports(win.document, webapp, newFile);
-      optimize_embedL10nResources(win.document, subDict);
-      optimize_concatL10nResources(win.document, webapp, fullDict);
-      optimize_aggregateJsResources(win.document, webapp, newFile);
-      optimize_inlineResources(win.document, webapp, file.path, newFile);
-      optimize_serializeHTMLDocument(win.document, newFile);
-
-      // notify the world that this HTML document has been optimized
-      callback();
-    }
   };
 
   // load and parse the HTML document
@@ -610,7 +604,50 @@ function optimize_compile(webapp, file, callback) {
       L10N_OPTIMIZATION_BLACKLIST.indexOf(webapp.sourceDirectoryName) < 0) {
     // selecting a language triggers `XMLHttpRequest' and `dispatchEvent' above
     debug('localizing: ' + file.path);
-    mozL10n.language.code = l10nLocales[processedLocales];
+
+    // if LOCALE_BASEDIR is set, we're going to show missing strings at 
+    // buildtime.
+    var debugL10n = config.LOCALE_BASEDIR != "";
+
+    // since l10n.js was read before the document was created, we need to
+    // explicitly initialize it again via mozL10n.bootstrap, which looks for
+    // *.ini links in the HTML and sets up the localization context
+    mozL10n.bootstrap(function() {
+      let docElt = win.document.documentElement;
+
+      while (processedLocales < l10nLocales.length) {
+        debug('fireL10nReadyEvent - ' +
+              processedLocales + '/' + l10nLocales.length);
+
+        // change the language of the localization context
+        mozL10n.ctx.requestLocales(l10nLocales[processedLocales]);
+
+        // create JSON dicts for the current language; one for the <script> tag
+        // embedded in HTML and one for locales-obj/
+        subDict[mozL10n.language.code] = getDictionary(docElt);
+        fullDict[mozL10n.language.code] = getDictionary();
+
+        processedLocales++;
+      }
+
+      // we expect the last locale to be the default one:
+      // set the lang/dir attributes of the current document
+      docElt.dir = mozL10n.language.direction;
+      docElt.lang = mozL10n.language.code;
+
+      // save localized / optimized document
+      let newFile = new FileUtils.File(file.path + '.' +
+                                       config.GAIA_DEFAULT_LOCALE);
+      optimize_embedHtmlImports(win.document, webapp, newFile);
+      optimize_embedL10nResources(win.document, subDict);
+      optimize_concatL10nResources(win.document, webapp, fullDict);
+      optimize_aggregateJsResources(win.document, webapp, newFile);
+      optimize_inlineResources(win.document, webapp, file.path, newFile);
+      optimize_serializeHTMLDocument(win.document, newFile);
+
+      // notify the world that this HTML document has been optimized
+      callback();
+    }, debugL10n);
   } else {
     callback();
   }
@@ -627,6 +664,8 @@ function execute(options) {
 
   Services.scriptloader.loadSubScript('file:///' + config.GAIA_DIR +
       '/shared/js/l10n.js?reload=' + new Date().getTime(), win);
+  Services.scriptloader.loadSubScript('file:///' + config.GAIA_DIR +
+      '/build/l10n.js?reload=' + new Date().getTime(), win);
   Services.scriptloader.loadSubScript('file:///' + config.GAIA_DIR +
       '/build/jsmin.js?reload=' + new Date().getTime(), scope);
   JSMin = scope.JSMin;

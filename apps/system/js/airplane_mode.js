@@ -90,9 +90,11 @@
       );
     },
     updateStatus: function(value) {
+      // FM Radio will be turned off in Gecko, more detailed about why we do
+      // this in Gecko instead, please check bug 997064.
       var bluetooth = window.navigator.mozBluetooth;
       var wifiManager = window.navigator.mozWifiManager;
-      var fmRadio = window.navigator.mozFMRadio;
+      var nfc = window.navigator.mozNfc;
 
       // Radio is a special service (might not exist e.g. tablet)
       // if value is true,
@@ -126,11 +128,8 @@
         this._suspend('geolocation');
 
         // Turn off NFC
-        this._suspend('nfc');
-
-        // Turn off FM Radio.
-        if (fmRadio && fmRadio.enabled) {
-          fmRadio.disable();
+        if (nfc) {
+          this._suspend('nfc');
         }
       } else {
         // Note that we don't restore Wifi tethering when leaving airplane mode
@@ -157,7 +156,8 @@
           this._restore('geolocation');
         }
 
-        if (!this._settings['nfc.enabled']) {
+        // Don't attempt to turn on NFC if it's already on
+        if (nfc && !this._settings['nfc.enabled']) {
           this._restore('nfc');
         }
       }

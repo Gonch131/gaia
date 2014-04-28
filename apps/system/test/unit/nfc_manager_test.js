@@ -1,13 +1,17 @@
 'use strict';
 
-/* globals MocksHelper,
-           MozNDEFRecord, NfcBuffer, NDEF, NfcManager, NfcManagerUtils, NfcUtils
-*/
+mocha.globals(['NfcManager', 'ScreenManager']);
+
+/* globals MockNfc, MocksHelper,
+           MozNDEFRecord, NfcBuffer, NDEF, NfcUtils, NfcManagerUtils,
+           NfcManager */
 
 require('/shared/test/unit/mocks/mock_moz_ndefrecord.js');
 require('/shared/test/unit/mocks/mock_settings_listener.js');
 require('/shared/js/nfc_utils.js');
+require('/test/unit/mock_screen_manager.js');
 requireApp('system/test/unit/mock_activity.js');
+requireApp('system/test/unit/mock_nfc.js');
 requireApp('system/test/unit/mock_screen_manager.js');
 requireApp('system/test/unit/mock_settingslistener_installer.js');
 requireApp('system/js/nfc_manager_utils.js');
@@ -19,18 +23,21 @@ var mocksForNfcUtils = new MocksHelper([
   'ScreenManager'
 ]).init();
 
-suite('Nfc Utility functions', function() {
+suite('Nfc Manager Functions', function() {
 
+  var sinon;
   mocksForNfcUtils.attachTestHelpers();
 
-  suiteSetup(function() {
+  setup(function() {
+    sinon = this.sinon;
   });
 
-  suite('nfc uint8array utils', function() {
+  suite('NFC Utils', function() {
+
     var string1;
     var uint8array1;
 
-    suiteSetup(function() {
+    setup(function() {
       string1 = 'StringTestString ABCDEFGHIJKLMNOPQRSTUVWXYZ';
       uint8array1 = new Uint8Array([0x53, 0x74, 0x72, 0x69, 0x6e, 0x67,
                                     0x54, 0x65, 0x73, 0x74,
@@ -54,6 +61,7 @@ suite('Nfc Utility functions', function() {
       var str = NfcUtils.toUTF8(uint8array1);
       var backStr = NfcUtils.toUTF8(u8a);
       var backU8a = NfcUtils.fromUTF8(str);
+      var nullObj = NfcUtils.toUTF8(null);
 
       var u1 = NfcUtils.equalArrays(u8a, uint8array1);
       var s1 = NfcUtils.equalArrays(str, string1);
@@ -68,6 +76,7 @@ suite('Nfc Utility functions', function() {
       assert.equal(bs2, true);
       assert.equal(bu1, true);
       assert.equal(bu2, true);
+      assert.equal(nullObj, null);
     });
 
   });
@@ -76,7 +85,7 @@ suite('Nfc Utility functions', function() {
     var urlNDEF; // MozNDEFRecord
     var urlU8a; // Uint8Array
 
-    suiteSetup(function() {
+    setup(function() {
       var tnf     = NDEF.TNF_WELL_KNOWN;
       var type    = NDEF.RTD_URI;
       var id      = new Uint8Array(); // no id.
@@ -231,6 +240,73 @@ suite('Nfc Utility functions', function() {
       assert.isTrue(stubFormatVCardRecord.calledThrice);
 
       stubFormatVCardRecord.restore();
+    });
+  });
+
+  suite('NFC Manager Dispatch Events', function() {
+    var aUUID = '{4f4787c4-51f0-4288-8caf-55d440303b0b}';
+    var vcard;
+
+    setup(function() {
+      vcard = 'BEGIN:VCARD\n';
+      vcard += 'VERSION:2.1\n';
+      vcard += 'END:VCARD';
+    });
+
+    test('NFC Manager Outgoing DispatchEvents', function() {
+      var command = {
+        sessionToken: aUUID,
+        techList: ['NDEF'],
+        records: [{
+          tnf: NDEF.TNF_MIME_MEDIA,
+          type: NfcUtils.fromUTF8('text/vcard'),
+          id: new Uint8Array(),
+          payload: NfcUtils.fromUTF8(vcard)
+        }]
+      };
+
+      var stubDispatchEvent = sinon.stub(window, 'dispatchEvent');
+
+      NfcManager.handleTechnologyDiscovered(command);
+      stubDispatchEvent.getCall(0).calledWith({ type: 'nfc-tech-discovered',
+                                                bubbles: false });
+
+      NfcManager.handleTechLost(command);
+      stubDispatchEvent.getCall(0).calledWith({ type: 'nfc-tech-lost',
+                                                bubbles: false });
+
+      stubDispatchEvent.restore();
+    });
+
+  });
+
+  suite('NFC Manager changeHardwareState test', function () {
+    var realNfc = navigator.mozNfc;
+
+    setup(function() {
+      navigator.mozNfc = MockNfc;
+    });
+
+    teardown(function() {
+      navigator.mozNfc = realNfc;
+    });
+
+    test('NFC Manager startPoll', function() {
+      var stubStartPoll = sinon.spy(MockNfc, 'startPoll');
+      var stubStopPoll = sinon.spy(MockNfc, 'stopPoll');
+      var stubPowerOff = sinon.spy(MockNfc, 'powerOff');
+
+      NfcManager.changeHardwareState(NfcManager.NFC_HW_STATE_OFF);
+      assert.isTrue(stubPowerOff.calledOnce);
+
+      NfcManager.changeHardwareState(NfcManager.NFC_HW_STATE_ON);
+      assert.isTrue(stubStartPoll.calledOnce);
+
+      NfcManager.changeHardwareState(NfcManager.NFC_HW_STATE_ENABLE_DISCOVERY);
+      assert.isTrue(stubStartPoll.calledTwice);
+
+      NfcManager.changeHardwareState(NfcManager.NFC_HW_STATE_DISABLE_DISCOVERY);
+      assert.isTrue(stubStopPoll.calledOnce);
     });
   });
 

@@ -108,7 +108,6 @@ var Settings = {
     }
 
     this.SettingsService = options.SettingsService;
-    this.SettingsCache = options.SettingsCache;
     this.PageTransitions = options.PageTransitions;
     this.LazyLoader = options.LazyLoader;
     this.ScreenLayout = options.ScreenLayout;
@@ -189,19 +188,6 @@ var Settings = {
     navigator.mozSetMessageHandler('activity', this.webActivityHandler);
 
     this.currentPanel = 'root';
-  },
-
-  // Cache of all current settings values.  There's some large stuff
-  // in here, but not much useful can be done with the settings app
-  // without these, so we keep this around most of the time.
-  get settingsCache() {
-    return this.SettingsCache.cache;
-  },
-
-  // Invoke |callback| with a request object for a successful fetch of
-  // settings values, when those values are ready.
-  getSettings: function(callback) {
-    this.SettingsCache.getSettings(callback);
   },
 
   // An activity can be closed either by pressing the 'X' button
@@ -342,9 +328,9 @@ window.addEventListener('keydown', function handleSpecialKeys(event) {
 
 // startup & language switching
 function startupLocale() {
-  navigator.mozL10n.ready(function startupLocale() {
+  // XXX change to mozL10n.ready when https://bugzil.la/993188 is fixed
+  navigator.mozL10n.once(function startupLocale() {
     initLocale();
-    // XXX this might call `initLocale()` twice until bug 882592 is fixed
     window.addEventListener('localized', initLocale);
   });
 }

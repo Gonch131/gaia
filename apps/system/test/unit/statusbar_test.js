@@ -42,7 +42,8 @@ mocha.globals(['Clock', 'StatusBar', 'lockScreen', 'System']);
 >>>>>>> c250da9f8fdc511ad718ba594a0aa60a5959e74b
 suite('system/Statusbar', function() {
   var mobileConnectionCount = 2;
-  var fakeStatusBarNode, fakeTopPanel;
+  var fakeStatusBarNode, fakeTopPanel, fakeStatusBarBackground,
+    fakeStatusBarIcons;
   var realMozL10n, realMozMobileConnections, realMozTelephony, fakeIcons = [];
   var originalLocked;
 
@@ -79,6 +80,14 @@ suite('system/Statusbar', function() {
     fakeTopPanel = document.createElement('div');
     fakeTopPanel.id = 'top-panel';
     document.body.appendChild(fakeTopPanel);
+
+    fakeStatusBarBackground = document.createElement('div');
+    fakeStatusBarBackground.id = 'statusbar-background';
+    document.body.appendChild(fakeStatusBarBackground);
+
+    fakeStatusBarIcons = document.createElement('div');
+    fakeStatusBarIcons.id = 'statusbar-icons';
+    document.body.appendChild(fakeStatusBarIcons);
 
     StatusBar.ELEMENTS.forEach(function testAddElement(elementName) {
       var elt;
