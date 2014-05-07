@@ -9,11 +9,14 @@ require.config({
     'settings': {
       exports: 'Settings'
     },
+    'shared/async_storage': {
+      exports: 'AsyncStorage'
+    },
+    'shared/keyboard_helper': {
+      exports: 'KeyboardHelper'
+    },
     'shared/lazy_loader': {
       exports: 'LazyLoader'
-    },
-    'shared/settings_listener': {
-      exports: 'SettingsListener'
     },
     'shared/manifest_helper': {
       exports: 'ManifestHelper'
@@ -21,8 +24,8 @@ require.config({
     'shared/screen_layout': {
       exports: 'ScreenLayout'
     },
-    'shared/keyboard_helper': {
-      exports: 'KeyboardHelper'
+    'shared/settings_listener': {
+      exports: 'SettingsListener'
     }
   },
   modules: [
@@ -54,6 +57,14 @@ require.config({
     },
     {
       name: 'panels/app_permissions_list/panel',
+      exclude: ['main']
+    },
+    {
+      name: 'panels/screen_lock/panel',
+      exclude: ['main']
+    },
+    {
+      name: 'panels/screen_lock_passcode/panel',
       exclude: ['main']
     }
   ]
