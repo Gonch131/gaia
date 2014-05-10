@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-/* globals dump, lockScreen, CustomEvent, MozActivity,
+/* globals dump, lockScreen, CustomEvent, MozActivity, MozNDEFRecord,
    NfcHandoverManager, NfcUtils, NDEF, ScreenManager */
 'use strict';
 
@@ -50,6 +50,8 @@ var NfcManager = {
     }
   },
 
+  _options: null,
+
   init: function nm_init() {
     this._debug('Initializing NFC Message');
 
@@ -59,9 +61,16 @@ var NfcManager = {
     window.navigator.mozSetMessageHandler(
       'nfc-manager-tech-lost',
       this.handleTechLost.bind(this));
+    window.navigator.mozSetMessageHandler(
+      'nfc-manager-app-event-registration',
+      this.handleAppEventRegistration.bind(this));
     window.addEventListener('screenchange', this);
     window.addEventListener('lockscreen-appopened', this);
     window.addEventListener('lockscreen-appclosed', this);
+    window.addEventListener('homescreenopened', this);
+    window.addEventListener('appcreated', this);
+    window.addEventListener('appterminated', this);
+    window.addEventListener('appopen', this);
     var self = this;
     window.SettingsListener.observe('nfc.enabled', false, function(enabled) {
       var state = enabled ?
@@ -121,6 +130,22 @@ var NfcManager = {
     };
   },
 
+  _current: {
+    apps: {},
+    manifestURL: null,
+  },
+
+  _switchTo: function nm_switchTo(manifestURL) {
+    this._current.manifestURL = manifestURL;
+  },
+  _register: function nm_register(app) {
+    this._current.apps[app.manifestURL] = app;
+    this._current.app = app;
+  },
+  _unregister: function _unregister(manifestURL) {
+    delete this._current.apps[manifestURL];
+  },
+
   handleEvent: function nm_handleEvent(evt) {
     var state;
     switch (evt.type) {
@@ -145,6 +170,20 @@ var NfcManager = {
           'dispatch-p2p-user-response-on-active-app', {detail: this}));
         // Stop the P2P UI
         window.dispatchEvent(new CustomEvent('shrinking-stop'));
+        break;
+      case 'homescreenopened':
+        this._switchTo(null);
+        break;
+      case 'appcreated':
+        var app = evt.detail;
+        this._register(app);
+        break;
+      case 'appterminated':
+        this._unregister(evt.detail.manifestURL);
+        break;
+      case 'appopen':
+        var config = evt.detail;
+        this._switchTo(config.manifestURL);
         break;
     }
   },
@@ -199,43 +238,49 @@ var NfcManager = {
       // until Bug 1007724 will land
       options = this.createDefaultActivityOptions();
     } else {
-      options.data.records = ndefMsg;
+      //options.data.records = ndefMsg;
     }
 
     return options;
   },
 
   handleNdefDiscovered:
-    function nm_handleNdefDiscovered(tech, session, records) {
+    function nm_handleNdefDiscovered(tech, msg) {
 
       var self = this;
-      this._debug('handleNdefDiscovered: ' + JSON.stringify(records));
-      var options = this.handleNdefMessage(records);
+      this._debug('handleNdefDiscovered: ' + JSON.stringify(msg.records));
+      var options = this.handleNdefMessage(msg.records);
       if (options === null) {
         this._debug('Unimplemented. Handle Unknown type.');
       } else {
         this._debug('options: ' + JSON.stringify(options));
-        options.data.tech = tech;
-        options.data.sessionToken = session;
         var a = new MozActivity(options);
         a.onerror = function() {
           self._debug('Firing nfc-ndef-discovered failed');
         };
+
+        this._options = { 'name': options.name, 'data': {} };
+        for (var elm in options.data) {
+          this._options.data[elm] = options.data[elm];
+        }
+        this._options.data.sessionToken = msg.sessionToken;
+        this._options.data.tech = tech;
+        this._options.data.techList = msg.techList;
+        this._options.data.records = msg.records;
       }
   },
 
   /**
    * Handles P2P messages. Supports NDEF only currently.
    * @param {string} tech set to 'P2P', TODO: verify if needed
-   * @param {string} sessionToken
-   * @param {Array} records NDEF records
+   * @param {object} msg with tech, techlist, sessionToken and records
    */
-  handleP2P: function handleP2P(tech, sessionToken, records) {
+  handleP2P: function handleP2P(tech, msg) {
     if (records.length !== 0) {
        // Incoming P2P message carries a NDEF message. Dispatch
        // the NDEF message (this might bring another app to the
        // foreground).
-      this.handleNdefDiscovered(tech, sessionToken, records);
+      this.handleNdefDiscovered(tech, msg);
       return;
     }
 
@@ -377,11 +422,11 @@ var NfcManager = {
     // One shot try. Fallback directly to tag.
     switch (tech) {
       case 'P2P':
-        this.handleP2P(tech, msg.sessionToken, msg.records);
+        this.handleP2P(tech, msg);
         break;
       case 'NDEF':
       case 'NDEF_WRITEABLE':
-        this.handleNdefDiscovered(tech, msg.sessionToken, msg.records);
+        this.handleNdefDiscovered(tech, msg);
         break;
       case 'NDEF_FORMATABLE':
         // not moving to default for readability 
@@ -394,8 +439,8 @@ var NfcManager = {
     }
   },
 
-  handleTechLost: function nm_handleTechLost(command) {
-    this._debug('Technology Lost: ' + JSON.stringify(command));
+  handleTechLost: function nm_handleTechLost(msg) {
+    this._debug('Technology Lost: ' + JSON.stringify(msg));
 
     window.navigator.vibrate([125, 50, 25]);
     window.dispatchEvent(new CustomEvent('nfc-tech-lost'));
@@ -403,6 +448,35 @@ var NfcManager = {
     // Clean up P2P UI events
     window.removeEventListener('shrinking-sent', this);
     window.dispatchEvent(new CustomEvent('shrinking-stop'));
+
+    // Notify current registered app technology presence is lost.
+    if (this._options) {
+      // TODO: check ManifestURL map to tech.
+      var p2p = this._options.data.techList.indexOf('P2P');
+      if (p2p == -1) {
+        var lostmsg = {
+          'data': {
+            'sessionToken': this._options.data.sessionToken
+          }
+        };
+        window.navigator.mozNfc.notifyTagLost(this._current.appId,
+                                              JSON.stringify(lostmsg));
+      } else {
+        // This interface doesn't exist.
+        //window.navigator.mozNfc.notifyPeerLost(this._current.manifestURL);
+      }
+      this._options = null;
+    }
+  },
+
+  handleAppEventRegistration: function nm_handleAppEventRegistration(appInfo) {
+    this._debug('handleAppEventRegistration: ' + JSON.stringify(appInfo));
+    this._debug('handleAppEventRegistration: data: ' +
+                JSON.stringify(this._options));
+    // TODO: Map needed.
+    this._current.appId = appInfo.appId;
+    window.navigator.mozNfc.notifyTagFound(appInfo.appId,
+                                           JSON.stringify(this._options));
   },
 
   // Miscellaneous utility functions to handle formating the JSON for activities
