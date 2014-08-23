@@ -39,4 +39,29 @@ window.addEventListener('DOMContentLoaded', function() {
     updateUIText('data', byteArrayToHex(data.payload));
     updateUIText('time', new Date());
   });
+/*
+  window.navigator.mozNfc.onhcieventtransaction = handleHCIEventTransaction;
+   // Handler for transaction events.
+  function handleHCIEventTransaction(event) {
+    console.log("XXXXXXXXXX onhcieventtransaction");
+  };
+*/
+  window.navigator.mozNfc.onhcieventtransaction = function(event) {
+    console.log("XXXXXXXXXX onhcieventtransaction");
+    var data2 = event.detail; // Meh. Custom event has only detail as field. Use HCI Event instead.
+    for (var k in data2) {
+      console.log("Key: data2[" + k + "]: "  + JSON.stringify(data2[k]));
+    }
+
+    log('XXXXXXXXXXX on hcieventtransaction XXXXXXXXXXX 2');
+    log('EVENT: ' + JSON.stringify(event.detail));
+    firedCount += 1;
+    log('EVENT HCI Event Transaction message handler fired, count ' + firedCount +
+        ', message : ' + JSON.stringify(event.detail));
+    var data = event.detail;
+    updateUIText('count', firedCount);
+    updateUIText('aid', byteArrayToHex(data.aid));
+    updateUIText('data', byteArrayToHex(data.payload));
+    updateUIText('time', new Date());
+  };
 });

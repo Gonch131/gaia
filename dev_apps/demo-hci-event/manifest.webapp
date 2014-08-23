@@ -11,6 +11,7 @@
   },
   "type": "certified",
   "permissions": {
+    "nfc":{ "access": "readwrite" },
     "nfc-hci-events":{}
   },
   "messages": [
