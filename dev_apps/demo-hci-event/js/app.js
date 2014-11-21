@@ -31,11 +31,22 @@ window.addEventListener('DOMContentLoaded', function() {
     document.getElementById(elementId).textContent = text;
   }
 
+  window.navigator.mozSetMessageHandler("nfc-hci-event-transaction", function(msg) {
+    log("ZZZ Zeus!");
+    log("Reserved function name. I should not be printed");
+  });
+
+  // This blows up execution (good!)
+  //window.navigator.mozSetReservedMessageHandler("nfc-hci-event-transaction", function(msg) {
+  //  log("ZZZ I really should not be here");
+  //});
+
   var firedCount = 0;
-  log('Starting app, setting message handler');
-  window.navigator.mozSetMessageHandler('nfc-hci-event-transaction', (msg) => {
+  log('Starting app, setting event handler');
+  window.navigator.mozNfc.onhcieventtransaction = (msg) => {
+    log('HCI Event Transaction event handler fired, top');
     firedCount += 1;
-    log('HCI Event Transaction message handler fired, count ' + firedCount +
+    log('HCI Event Transaction event handler fired, count ' + firedCount +
         ', message : ' + JSON.stringify(msg));
 
     updateUIText('count', firedCount);
@@ -44,5 +55,5 @@ window.addEventListener('DOMContentLoaded', function() {
     updateUIText('data-str', byteArrayToStr(msg.payload));
     updateUIText('origin', msg.origin);
     updateUIText('time', new Date());
-  });
+  };
 });
